@@ -1,10 +1,32 @@
 use ic_cdk_macros::query;
 
-use crate::{CarDetails, STATE};
+use crate::{Car, STATE};
+
+use super::monitoring::log_search;
 #[query]
-fn list_all_cars() -> Vec<CarDetails> {
+fn search_car(start_time: u64, end_time: u64) -> Vec<Car> {
     STATE.with(|state| {
         let state = state.borrow();
-        state.cars.values().cloned().collect() // Return a list of all cars
+        state.cars.values().cloned().map(|mut f|{ f.details.status = f.get_booking_status_at_give_time_period(start_time, end_time); f}).collect()
     })
 }
+
+#[ic_cdk_macros::update]
+fn list_all_cars() -> Vec<Car> {
+    log_search();
+    STATE.with(|state| {
+        let state = state.borrow();
+        state.cars.values().cloned().collect()
+    })
+}
+
+
+// #[query]
+// fn list_all_cars(start_time: u64, end_time:u64) -> Vec<Car> {
+//     STATE.with(|state| {
+//         let state = state.borrow();
+//         state.iter().map( status == UnderMaintainace ? Status::Unavailable value.reservation_status(date time) ).collect()
+//   Car {status: Unaavilable/Availble}
+//         state.cars.values().cloned().collect() // Return a list of all cars
+//     })
+// }
