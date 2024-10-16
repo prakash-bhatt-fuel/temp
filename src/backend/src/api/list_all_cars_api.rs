@@ -1,13 +1,14 @@
-use ic_cdk_macros::query;
+use ic_cdk::update;
 
 use crate::{Car, STATE};
 
 use super::monitoring::log_search;
-#[query]
+#[update ]
 fn search_car(start_time: u64, end_time: u64) -> Vec<Car> {
+    log_search();
     STATE.with(|state| {
         let state = state.borrow();
-        state.cars.values().cloned().map(|mut f|{ f.details.status = f.get_booking_status_at_give_time_period(start_time, end_time); f}).collect()
+        state.cars.values().cloned().map(|mut f|{ f.details.status = f.get_booking_status_at_give_time_period(start_time, end_time); f.get_car_without_bookings()}).collect()
     })
 }
 
@@ -16,7 +17,7 @@ fn list_all_cars() -> Vec<Car> {
     log_search();
     STATE.with(|state| {
         let state = state.borrow();
-        state.cars.values().cloned().collect()
+        state.cars.values().map(|f| f.get_car_without_bookings()).collect()
     })
 }
 

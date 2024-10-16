@@ -6,19 +6,32 @@ use ic_cdk::{post_upgrade, pre_upgrade, storage};
 pub use models::*;
 pub mod default;
 mod api;
+mod controller;
 pub mod constant;
 pub use api::monitoring::EventMoniter;
+pub use candid::Principal;
+pub use controller::*;
+use crate::api::send_email::MailState;
+pub mod utils;
+#[cfg(test)]
+mod tests;
 
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         cars: BTreeMap::new(),
-        monitoring: MonitoringState::default()
+        monitoring: MonitoringState::default(),
+        controllers: Vec::new(),
+        mail_state: None,
     });
 }
 
 #[ic_cdk_macros::init]
 fn init() {
+    init_hook();
+}
+
+fn init_hook() {
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         
@@ -30,7 +43,7 @@ fn init() {
 
 
         if !state.cars.contains_key(&DEFAULT_CAR_ID )  {
-            state.cars.insert(DEFAULT_CAR_ID, Car { id: DEFAULT_CAR_ID, details: default_car, bookings: Vec::new(),/*  monitoring: Vec::new() */});
+            state.cars.insert(DEFAULT_CAR_ID, Car { id: DEFAULT_CAR_ID, details: default_car, bookings: BTreeMap::new(),/*  monitoring: Vec::new() */});
         }
         
     });
@@ -40,7 +53,9 @@ fn init() {
 fn pre_upgrade() {
     STATE.with(|state| storage::stable_save((State {
         cars: state.borrow().cars.clone(), 
-        monitoring: state.borrow().monitoring.clone()
+        monitoring: state.borrow().monitoring.clone(),
+        controllers: state.borrow().controllers.clone(),
+        mail_state: state.borrow().mail_state.clone()
     },)).unwrap());
 }
 
@@ -50,7 +65,7 @@ fn post_upgrade() {
     match state {
         Ok(state) => {
             STATE.with(|s| { *s.borrow_mut() =  state.0;  });
-
+            init_hook();
         }, Err(e) => {
             println!("Failed to do post upgrade {e}");
         }

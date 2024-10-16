@@ -2,14 +2,16 @@ use std::collections::BTreeMap;
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
-use crate::api::monitoring::MonitoringState;
+use crate::{api::{monitoring::MonitoringState, send_email::MailState}, utils::format_datetime};
 
 
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct State {
     pub cars: BTreeMap<u64, Car>,
-    pub monitoring: MonitoringState
+    pub monitoring: MonitoringState,
+    pub controllers: Vec<Principal>,
+    pub mail_state: Option<MailState>
 }
 
 
@@ -18,20 +20,25 @@ pub struct State {
 pub struct Car {
     pub id: u64,
     pub details: CarDetails,
-    pub bookings: Vec<RentalTransaction>, 
+    pub bookings: BTreeMap<u64, RentalTransaction>, 
     // pub photos: Vec<String>
     // pub monitoring: Vec<EventMoniter>
 }
 
 impl Car {
+
+    pub fn get_car_without_bookings(&self) -> Self {
+        Self {  bookings: BTreeMap::new(), ..self.clone()}
+    }
+
     pub fn get_booking_status_at_give_time_period(&self, start_time: u64, end_time: u64) -> CarStatus {
     //    if self.details.status == CarStatus::Unavailable || self.details.status == CarStatus::UnderMaintenance {
     //        return   self.details.status.clone();
     //    } 
        for booking in &self.bookings {
         if Self::times_overlap(
-            booking.start_timestamp, 
-            booking.end_timestamp, 
+            booking.1.start_timestamp, 
+            booking.1.end_timestamp, 
             start_time, 
             end_time
         ) {
@@ -61,6 +68,7 @@ pub struct CarDetails {
     pub year: u32,
     pub description: String, 
     pub default_image_url: String, 
+    pub images: Vec<String>,
     // pub default_image_url: String,
     pub car_type: CarType,
     pub current_price_per_day: f64,
@@ -121,13 +129,43 @@ pub enum CarStatus {
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct RentalTransaction {
-    pub car_principal_id: u64,
+    pub booking_id: u64,
+    pub car_id: u64,
     pub customer_principal_id: Principal,
     pub customer: Option<CustomerDetials>,
     pub start_timestamp: u64, // Unix timestamp
     pub end_timestamp: u64,   // Unix timestamp
     pub total_amount: f64,
     pub payment_status: PaymentStatus,
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct TransactionHistory {
+    pub booking_id: u64,
+    pub car_id: u64,
+    pub customer_principal_id: Principal,
+    pub customer: Option<CustomerDetials>,
+    pub start_timestamp: String, // Unix timestamp
+    pub end_timestamp: String,   // Unix timestamp
+    pub total_amount: f64,
+    pub payment_status: PaymentStatus,
+}
+
+impl RentalTransaction {
+
+    pub fn to_transaction_history(&self) -> TransactionHistory {
+        TransactionHistory {
+            booking_id: self.booking_id, 
+            car_id: self.car_id, 
+            customer_principal_id: self.customer_principal_id.clone(), 
+            customer: self.customer.clone(),
+            start_timestamp: format_datetime(self.start_timestamp),
+            end_timestamp: format_datetime(self.end_timestamp),
+            total_amount: self.total_amount,
+            payment_status: self.payment_status.clone()
+        }
+    }
+
 }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -139,6 +177,18 @@ pub struct CustomerDetials {
     pub age: u8,
     pub pan: String, 
     pub aadhar: String,
+}
+
+impl CustomerDetials {
+    pub fn validate_details(&self) -> Result<(), String> {
+        if self.name.trim().len() < 3 {return  Err("Invalid Name, please provide a name with more than 4 characters.".into()) ;}
+        if self.email.trim().len() < 5 {return  Err("Invalid email, please provide a valid email adress".into()) ;}
+        if self.country_code.trim().len() != 2  {return  Err("Invalid country code, please provide a valid country code".into()) ;}
+        if self.mobile_number.trim().len() != 10  {return  Err("Invalid mobile number, please provide a 10 digits mobile number".into()) ;}
+        if (self.pan.trim().is_empty() || self.pan.trim().len() < 10) && (self.aadhar.trim().is_empty() || self.aadhar.trim().len() != 12)  {return  Err("Invalid documents, please provide a PAN or Aadhar".into()) ;}
+        if self.age < 18  {return  Err("Invalid age, age should be atleast 18".into()) ;}
+        Ok(())
+    }
 }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -161,5 +211,6 @@ pub enum PaymentStatus {
     Paid,
     Unpaid,
 }
+
 
 
